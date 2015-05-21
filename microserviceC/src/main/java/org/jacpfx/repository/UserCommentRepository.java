@@ -47,4 +47,5 @@ public class UserCommentRepository {
     public List<Comment> findCommentsByArticleId(String id) {
         return mongoTemplate.find(new Query(Criteria.where("articleId").regex(id)), Comment.class);
     }
+
 }

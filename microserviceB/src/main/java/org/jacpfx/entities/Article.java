@@ -6,7 +6,6 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.io.Serializable;
-import java.util.List;
 
 /**
  * Created by Andy Moncsek on 19.05.15.
@@ -27,9 +26,9 @@ public class Article implements Serializable{
 
 
     private @Transient
-    List<Comment> comments;
+    String comments;
 
-    public Article(String id, String title, String topic, String blog, String content, String author, List<Comment> comments) {
+    public Article(String id, String title, String topic, String blog, String content, String author, String comments) {
         this.id = id;
         this.title = title;
         this.topic = topic;
@@ -44,6 +43,10 @@ public class Article implements Serializable{
     }
     public Article(){
         this(null,null,null,null,null,null,null);
+    }
+
+    public Article(Article article,String comments){
+        this(article.id,article.title,article.topic,article.blog,article.content,article.author,comments);
     }
 
 
@@ -67,7 +70,7 @@ public class Article implements Serializable{
         return content;
     }
 
-    public List<Comment> getComments() {
+    public String getComments() {
         return comments;
     }
 
