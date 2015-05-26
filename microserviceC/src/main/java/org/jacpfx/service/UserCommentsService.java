@@ -3,11 +3,11 @@ package org.jacpfx.service;
 import com.google.gson.Gson;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.JsonObject;
-import org.jacpfx.common.MessageReply;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
+import org.jacpfx.common.WSMessageReply;
 import org.jacpfx.configuration.SpringConfiguration;
 import org.jacpfx.repository.UserCommentRepository;
 import org.jacpfx.vertx.services.ServiceVerticle;
@@ -15,7 +15,10 @@ import org.jacpfx.vertx.spring.SpringVerticle;
 import org.springframework.stereotype.Component;
 
 import javax.inject.Inject;
-import javax.ws.rs.*;
+import javax.ws.rs.ApplicationPath;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
 import java.util.function.Consumer;
 
 /**
@@ -31,7 +34,7 @@ public class UserCommentsService extends ServiceVerticle {
     @Path("/fetchAllWS")
     @OperationType(Type.WEBSOCKET)
     @Produces("application/json")
-    public void fetchAllUserCommentsWS(String message, MessageReply reply) {
+    public void fetchAllUserCommentsWS(String message, WSMessageReply reply) {
         findAll((value)-> reply.reply(gson.toJson(value)));
     }
 
@@ -45,7 +48,7 @@ public class UserCommentsService extends ServiceVerticle {
 
     @Path("/fetchByArticleIdWS")
     @OperationType(Type.WEBSOCKET)
-    public void fetchByArticleIdWS(String articleId, MessageReply reply) {
+    public void fetchByArticleIdWS(String articleId, WSMessageReply reply) {
         findById((value)-> reply.reply(gson.toJson(value)),articleId);
     }
 
@@ -56,20 +59,33 @@ public class UserCommentsService extends ServiceVerticle {
     }
 
     private void findById(Consumer<Object> consumer,String articleId) {
-        this.vertx.executeBlocking(future->
+        vertx.executeBlocking(future->
                 future.complete(repository.findCommentsByArticleId(articleId)),
                 (value)-> consumer.accept(value.result()));
     }
 
     private void findAll(Consumer<Object> consumer) {
-        this.vertx.executeBlocking(future->
+        vertx.executeBlocking(future->
                 future.complete(repository.getAllComments()),
                 (value)-> consumer.accept(value.result()));
     }
 
+    /**
+     * easy development mode
+     * @param args
+     */
     public static void main(String[] args) {
-        DeploymentOptions options = new DeploymentOptions().setInstances(1);
-        options.setConfig(new JsonObject().put("clustered", true));
-        Vertx.vertx().deployVerticle(new UserCommentsService(),options);
+        VertxOptions vOpts = new VertxOptions();
+        DeploymentOptions options = new DeploymentOptions().setInstances(4);
+        vOpts.setClustered(true);
+        Vertx.clusteredVertx(vOpts, cluster-> {
+            if(cluster.succeeded()){
+                final Vertx result = cluster.result();
+                result.deployVerticle("java-spring:org.jacpfx.service.UserCommentsService",options, handle -> {
+
+                });
+            }
+        });
     }
+
 }

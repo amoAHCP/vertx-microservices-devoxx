@@ -21,6 +21,8 @@ import java.util.List;
 @Qualifier("ArticleRepository")
 public class ArticleRepository {
 
+    private static int MAX=10;
+
     @Inject
     private MongoTemplate mongoTemplate;
 
@@ -44,7 +46,28 @@ public class ArticleRepository {
         }
     }
 
+    public Collection<Article> getAllArticles(int max) {
+        try {
+            return mongoTemplate.find(new Query(Criteria.where("id").exists(true)).limit(max),entityClass);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public Collection<Article> getAllArticlesPages(int page) {
+        try {
+            Query query = new Query(Criteria.where("id").exists(true));
+            if(page==0) query.limit(MAX);
+            if(page>0) query.skip(MAX*page).limit(MAX);
+            return mongoTemplate.find(query,entityClass);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     public List<Article> findArticlesByBlog(String blog) {
-        return mongoTemplate.find(new Query(Criteria.where("blog").regex(blog)), Article.class);
+        return mongoTemplate.find(new Query(Criteria.where("blog").regex(blog)), entityClass);
     }
 }

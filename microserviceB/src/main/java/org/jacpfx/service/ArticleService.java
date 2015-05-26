@@ -1,6 +1,9 @@
 package org.jacpfx.service;
 
 import com.google.gson.Gson;
+import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.Message;
 import org.jacpfx.common.Operation;
@@ -18,6 +21,7 @@ import javax.inject.Inject;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -55,6 +59,35 @@ public class ArticleService extends ServiceVerticle {
 
     }
 
+    @Path("/findMAX/:amount")
+    @OperationType(Type.REST_GET)
+    public void findMax(@PathParam("amount") final String amount, final Message message) {
+        dicovery.getService("/userCommentsService", onSuccessService(si -> si.getOperation("/fetchByArticleIdWS", onSuccessOp(op -> {
+            final String url = op.getUrl();
+            Collection<Article> articles = repository.getAllArticles(Integer.valueOf(amount));
+
+            List<Article> mappedArticles = articles.stream().map(a -> new Article(a, url)).collect(Collectors.toList());
+            message.reply(gson.toJson(mappedArticles));
+        }, fail -> message.reply(gson.toJson(repository.getAllArticles(Integer.valueOf(amount)))))),
+                fail -> message.reply(gson.toJson(repository.getAllArticles(Integer.valueOf(amount))))));
+
+    }
+
+    @Path("/findPage/:page")
+    @OperationType(Type.REST_GET)
+    public void findPage(@PathParam("page") final String page, final Message message) {
+        dicovery.getService("/userCommentsService", onSuccessService(si -> si.getOperation("/fetchByArticleIdWS", onSuccessOp(op -> {
+                    final String url = op.getUrl();
+                    Collection<Article> articles = repository.getAllArticlesPages(Integer.valueOf(page));
+
+                    List<Article> mappedArticles = articles.stream().map(a -> new Article(a, url)).collect(Collectors.toList());
+                    message.reply(gson.toJson(mappedArticles));
+                }, fail -> message.reply(gson.toJson(repository.getAllArticlesPages(Integer.valueOf(page)))))),
+                fail -> message.reply(gson.toJson(repository.getAllArticlesPages(Integer.valueOf(page))))));
+
+    }
+
+
     private void getArticlesAndUpdateCommentURL(Operation op, final Message message) {
         final String url = op.getUrl();
         List<Article> articles = repository.getAllArticles().stream().map(article -> new Article(article, url.replace(":articleId", article.getId()))).collect(Collectors.toList());
@@ -73,20 +106,34 @@ public class ArticleService extends ServiceVerticle {
 
     private ServiceInfo getOperation(String articleId, Message message, ServiceInfo si) {
         return si.getOperation("/fetchByArticleIdWS", onSuccessOp(op ->
-                getWSConnection(articleId, message, op), fail -> message.reply("/fetchByArticleIdWS not available: " + fail.getMessage())));
+                getWSConnection(articleId, message, op), fail -> message.reply("/fetchByArticleIdWS method not available: " + fail.getMessage())));
     }
 
     private Operation getWSConnection(String articleId, Message message, Operation op) {
         return op.websocketConnection(ws -> {
             ws.handler(data -> {
+                // reply to rest-request
                 message.reply(new String(data.getBytes()));
                 ws.close();
             });
+            // send message
             ws.writeMessage(Buffer.buffer(articleId));
         });
     }
 
+    public static void main(String[] args) {
+        VertxOptions vOpts = new VertxOptions();
+        DeploymentOptions options = new DeploymentOptions().setInstances(4);
+        vOpts.setClustered(true);
+        Vertx.clusteredVertx(vOpts, cluster-> {
+            if(cluster.succeeded()){
+                final Vertx result = cluster.result();
+                result.deployVerticle("java-spring:org.jacpfx.service.ArticleService",options, handle -> {
 
+                });
+            }
+        });
+    }
 }
 
 

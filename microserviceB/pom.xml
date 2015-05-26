@@ -16,7 +16,7 @@
     <url>http://maven.apache.org</url>
 
     <properties>
-        <Main-Verticle>org.jacpfx.service.ArticleService</Main-Verticle>
+        <Main-Verticle>java-spring:org.jacpfx.service.ArticleService</Main-Verticle>
     </properties>
 
     <dependencies>

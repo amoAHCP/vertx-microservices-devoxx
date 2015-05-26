@@ -66,4 +66,14 @@ public class CreateArticlesTest {
         assertTrue(all.size() >= 1000);
         all.forEach(article-> System.out.println(article.getId()+","));
     }
+
+    @Test
+    //@Ignore
+    public void getAllDataLimitTest() {
+        Collection<Article> all = repo.getAllArticles(100);
+        assertNotNull(all);
+        assertFalse(all.isEmpty());
+        assertTrue(all.size() == 100);
+        all.forEach(article-> System.out.println(article.getId()+","));
+    }
 }
