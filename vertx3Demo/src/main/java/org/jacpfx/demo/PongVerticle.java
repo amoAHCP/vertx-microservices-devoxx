@@ -9,7 +9,10 @@ import io.vertx.core.Future;
 public class PongVerticle extends AbstractVerticle {
     public void start(Future<Void> startFuture) throws Exception {
 
-
+        vertx.eventBus().consumer("pong",eventHandler -> {
+            System.out.println(Thread.currentThread()+" got: " + eventHandler.body());
+            vertx.eventBus().send("ping", "pong");
+        });
 
         startFuture.complete();
     }

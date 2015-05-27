@@ -1,9 +1,7 @@
 package org.jacpfx.service;
 
 import com.google.gson.Gson;
-import io.vertx.core.DeploymentOptions;
-import io.vertx.core.Vertx;
-import io.vertx.core.VertxOptions;
+import io.vertx.core.*;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.Message;
 import org.jacpfx.common.Operation;
@@ -38,53 +36,71 @@ import static org.jacpfx.common.ServiceInfoResult.onSuccessService;
 public class ArticleService extends ServiceVerticle {
 
     private Gson gson = new Gson();
-    private
     @Inject
-    ArticleRepository repository;
-    // http://.../findAll
-    // http:// .../find/{magazine}
-    // http://.../findAllWithComments
-    // http://.../comments/{articleId}
+    private ArticleRepository repository;
 
 
     @Path("/findAll")
     @OperationType(Type.REST_GET)
     public void findAll(final Message message) {
-        dicovery.getService("/userCommentsService", onSuccessService(si ->
-                        si.getOperation("/fetchByArticleIdREST/:articleId",
+        dicovery.service("/userCommentsService",
+                onSuccessService(si -> si.operation("/fetchByArticleIdREST/:articleId",
                                 onSuccessOp(op ->
-                                        getArticlesAndUpdateCommentURL(op, message), fail ->
-                                        message.reply(gson.toJson(repository.getAllArticles())))),
-                fail -> message.reply(gson.toJson(repository.getAllArticles()))));
+                                                getArticlesAndUpdateCommentURL(op, message),
+                                        fail -> message.reply(gson.toJson(repository.getAllArticles())))),
+                        fail -> message.reply(gson.toJson(repository.getAllArticles()))));
 
     }
 
     @Path("/findMAX/:amount")
     @OperationType(Type.REST_GET)
     public void findMax(@PathParam("amount") final String amount, final Message message) {
-        dicovery.getService("/userCommentsService", onSuccessService(si -> si.getOperation("/fetchByArticleIdWS", onSuccessOp(op -> {
-            final String url = op.getUrl();
-            Collection<Article> articles = repository.getAllArticles(Integer.valueOf(amount));
+        dicovery.service("/userCommentsService",
+                onSuccessService(si -> si.operation("/fetchByArticleIdWS",
+                                onSuccessOp(op ->
+                                                updateURL(message, op.getUrl(), repository.getAllArticles(Integer.valueOf(amount))),
+                                        fail -> message.reply(gson.toJson(repository.getAllArticles(Integer.valueOf(amount)))))),
+                        fail -> message.reply(gson.toJson(repository.getAllArticles(Integer.valueOf(amount))))));
 
-            List<Article> mappedArticles = articles.stream().map(a -> new Article(a, url)).collect(Collectors.toList());
-            message.reply(gson.toJson(mappedArticles));
-        }, fail -> message.reply(gson.toJson(repository.getAllArticles(Integer.valueOf(amount)))))),
-                fail -> message.reply(gson.toJson(repository.getAllArticles(Integer.valueOf(amount))))));
+    }
+
+    @Path("/comments/:articleId")
+    @OperationType(Type.REST_GET)
+    public void findComments(@PathParam("articleId") final String articleId, Message message) {
+
+        dicovery.service("/userCommentsService",
+                onSuccessService(si -> operation(articleId, message, si),
+                        fail -> message.reply("/userCommentsService not available: " + fail.getMessage())));
 
     }
 
     @Path("/findPage/:page")
     @OperationType(Type.REST_GET)
     public void findPage(@PathParam("page") final String page, final Message message) {
-        dicovery.getService("/userCommentsService", onSuccessService(si -> si.getOperation("/fetchByArticleIdWS", onSuccessOp(op -> {
-                    final String url = op.getUrl();
-                    Collection<Article> articles = repository.getAllArticlesPages(Integer.valueOf(page));
+        dicovery.service("/userCommentsService",
+                onSuccessService(si -> si.operation("/fetchByArticleIdWS",
+                                onSuccessOp(op -> complexPageReply(page, message, op),
+                                        fail -> simplePageReply(page, message))),
+                        fail -> simplePageReply(page, message)));
 
-                    List<Article> mappedArticles = articles.stream().map(a -> new Article(a, url)).collect(Collectors.toList());
-                    message.reply(gson.toJson(mappedArticles));
-                }, fail -> message.reply(gson.toJson(repository.getAllArticlesPages(Integer.valueOf(page)))))),
-                fail -> message.reply(gson.toJson(repository.getAllArticlesPages(Integer.valueOf(page))))));
+    }
 
+    private void simplePageReply(String page, Message message) {
+        message.reply(gson.toJson(repository.getAllArticlesPages(Integer.valueOf(page))));
+    }
+
+    private void complexPageReply(String page, Message message, Operation op) {
+        vertx.executeBlocking((Handler<Future<Collection<Article>>>) future -> {
+            future.complete(repository.getAllArticlesPages(Integer.valueOf(page)));
+        }, articles -> {
+            if (articles.failed()) message.reply("error");
+            updateURL(message, op.getUrl(), articles.result());
+        });
+    }
+
+    private void updateURL(Message message, String url, Collection<Article> articles) {
+        List<Article> mappedArticles = articles.stream().map(a -> new Article(a, url)).collect(Collectors.toList());
+        message.reply(gson.toJson(mappedArticles));
     }
 
 
@@ -94,18 +110,9 @@ public class ArticleService extends ServiceVerticle {
         message.reply(gson.toJson(articles));
     }
 
-    @Path("/comments/:articleId")
-    @OperationType(Type.REST_GET)
-    public void findComments(@PathParam("articleId") final String articleId, Message message) {
 
-        dicovery.getService("/userCommentsService", onSuccessService(si ->
-                        getOperation(articleId, message, si),
-                fail -> message.reply("/userCommentsService not available: " + fail.getMessage())));
-
-    }
-
-    private ServiceInfo getOperation(String articleId, Message message, ServiceInfo si) {
-        return si.getOperation("/fetchByArticleIdWS", onSuccessOp(op ->
+    private ServiceInfo operation(String articleId, Message message, ServiceInfo si) {
+        return si.operation("/fetchByArticleIdWS", onSuccessOp(op ->
                 getWSConnection(articleId, message, op), fail -> message.reply("/fetchByArticleIdWS method not available: " + fail.getMessage())));
     }
 
@@ -125,10 +132,10 @@ public class ArticleService extends ServiceVerticle {
         VertxOptions vOpts = new VertxOptions();
         DeploymentOptions options = new DeploymentOptions().setInstances(4);
         vOpts.setClustered(true);
-        Vertx.clusteredVertx(vOpts, cluster-> {
-            if(cluster.succeeded()){
+        Vertx.clusteredVertx(vOpts, cluster -> {
+            if (cluster.succeeded()) {
                 final Vertx result = cluster.result();
-                result.deployVerticle("java-spring:org.jacpfx.service.ArticleService",options, handle -> {
+                result.deployVerticle("java-spring:org.jacpfx.service.ArticleService", options, handle -> {
 
                 });
             }
